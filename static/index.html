@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spot Pricing</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+      min-height: 100vh;
+    }
+
+    .topbar {
+      background: #0f172a;
+      color: #fff;
+      padding: 14px 24px;
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+    .topbar h1 { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
+    .topbar p  { font-size: 12px; color: #94a3b8; }
+
+    .main { padding: 20px 24px; max-width: 1400px; margin: 0 auto; }
+
+    /* ── Filters ── */
+    .filters {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .tabs { display: flex; gap: 4px; }
+
+    .tab {
+      padding: 5px 13px;
+      border: 1px solid #e2e8f0;
+      background: #fff;
+      border-radius: 5px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      color: #64748b;
+      transition: background 0.1s, color 0.1s;
+    }
+    .tab:hover { background: #f8fafc; }
+    .tab.active          { background: #0f172a; border-color: #0f172a; color: #fff; }
+    .tab.aws.active      { background: #f59e0b; border-color: #f59e0b; color: #fff; }
+    .tab.azure.active    { background: #0078D4; border-color: #0078D4; color: #fff; }
+    .tab.gcp.active      { background: #1a73e8; border-color: #1a73e8; color: #fff; }
+
+    .sep { width: 1px; height: 24px; background: #e2e8f0; }
+
+    input[type="text"] {
+      padding: 5px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 5px;
+      font-size: 12px;
+      color: #1e293b;
+      outline: none;
+      width: 180px;
+      background: #f8fafc;
+    }
+    input[type="text"]:focus { border-color: #94a3b8; background: #fff; }
+
+    .btn-refresh {
+      margin-left: auto;
+      padding: 5px 13px;
+      background: #0f172a;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-refresh:hover    { background: #1e293b; }
+    .btn-refresh:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* ── Status / errors ── */
+    .meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #64748b;
+      margin-bottom: 8px;
+      min-height: 20px;
+    }
+
+    .spinner {
+      width: 12px; height: 12px;
+      border: 2px solid #cbd5e1;
+      border-top-color: #64748b;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .errors { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+    .error-pill {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #991b1b;
+      padding: 7px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+    .error-pill strong { font-weight: 700; text-transform: uppercase; }
+
+    /* ── Table ── */
+    .card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+
+    th {
+      background: #f8fafc;
+      padding: 9px 14px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid #e2e8f0;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    th:hover { background: #f1f5f9; color: #1e293b; }
+    th.active { color: #1e293b; }
+    th .icon { margin-left: 3px; opacity: 0.5; font-style: normal; }
+    th.active .icon { opacity: 1; }
+
+    td { padding: 9px 14px; border-bottom: 1px solid #f1f5f9; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafafa; }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+    .b-aws     { background: #fff3cd; color: #92400e; }
+    .b-azure   { background: #dbeafe; color: #1d4ed8; }
+    .b-gcp     { background: #d1fae5; color: #065f46; }
+    .b-linux   { background: #f0fdf4; color: #15803d; }
+    .b-windows { background: #eff6ff; color: #1d4ed8; }
+    .b-other   { background: #f3f4f6; color: #374151; }
+
+    /* ── Price coloring ── */
+    .mono { font-family: 'SF Mono', 'Monaco', 'Menlo', monospace; font-weight: 600; }
+    .p-low  { color: #15803d; }
+    .p-mid  { color: #b45309; }
+    .p-high { color: #dc2626; }
+
+    .itype { font-family: 'SF Mono', 'Monaco', 'Menlo', monospace; font-size: 12px; }
+
+    .empty {
+      padding: 48px;
+      text-align: center;
+      color: #94a3b8;
+    }
+    .empty strong { display: block; font-size: 14px; margin-bottom: 4px; color: #64748b; }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Spot Pricing</h1>
+  <p>Real-time spot / preemptible prices &mdash; North America West</p>
+</div>
+
+<div class="main">
+  <div class="filters">
+    <div class="tabs">
+      <button class="tab active" data-p="">All</button>
+      <button class="tab aws"   data-p="aws">AWS</button>
+      <button class="tab azure" data-p="azure">Azure</button>
+      <button class="tab gcp"   data-p="gcp">GCP</button>
+    </div>
+    <div class="sep"></div>
+    <input id="inp-region"   type="text" placeholder="Region (press Enter)">
+    <input id="inp-instance" type="text" placeholder="Filter instance type">
+    <button class="btn-refresh" id="btn-refresh">Refresh</button>
+  </div>
+
+  <div class="errors" id="errors"></div>
+  <div class="meta"  id="meta"></div>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th data-col="provider"><i class="icon">↕</i> Provider</th>
+          <th data-col="region"><i class="icon">↕</i> Region</th>
+          <th data-col="instance_type"><i class="icon">↕</i> Instance Type</th>
+          <th data-col="os"><i class="icon">↕</i> OS</th>
+          <th data-col="price_usd" class="active"><i class="icon">↑</i> $/hr</th>
+        </tr>
+      </thead>
+      <tbody id="tbody">
+        <tr><td colspan="5"><div class="empty"><strong>Loading&hellip;</strong></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  const MAX_ROWS = 1000;
+
+  let allRows    = [];
+  let sortCol    = 'price_usd';
+  let sortAsc    = true;
+  let activeP    = '';
+  let instFilter = '';
+
+  const tbody   = document.getElementById('tbody');
+  const metaEl  = document.getElementById('meta');
+  const errorsEl= document.getElementById('errors');
+  const btnRef  = document.getElementById('btn-refresh');
+  const inpReg  = document.getElementById('inp-region');
+  const inpInst = document.getElementById('inp-instance');
+
+  /* ── Helpers ── */
+
+  function priceTier(p, min, max) {
+    const pct = max === min ? 0 : (p - min) / (max - min);
+    return pct < 0.33 ? 'p-low' : pct < 0.66 ? 'p-mid' : 'p-high';
+  }
+
+  function osBadge(os) {
+    const l = os.toLowerCase();
+    if (l.includes('win'))  return ['b-windows', 'Windows'];
+    if (l.includes('linux') || l.includes('unix')) return ['b-linux', 'Linux'];
+    return ['b-other', os];
+  }
+
+  function sorted(data, col, asc) {
+    return [...data].sort((a, b) => {
+      const va = a[col], vb = b[col];
+      if (typeof va === 'number') return asc ? va - vb : vb - va;
+      return asc
+        ? String(va).localeCompare(String(vb))
+        : String(vb).localeCompare(String(va));
+    });
+  }
+
+  /* ── Render ── */
+
+  function render() {
+    const filter = instFilter.toLowerCase();
+    const rows = filter
+      ? allRows.filter(r => r.instance_type.toLowerCase().includes(filter))
+      : allRows;
+
+    const shown = rows.slice(0, MAX_ROWS);
+
+    if (!shown.length) {
+      tbody.innerHTML = '<tr><td colspan="5"><div class="empty"><strong>No results</strong>Try adjusting the filters.</div></td></tr>';
+      metaEl.innerHTML = '';
+      return;
+    }
+
+    const prices = shown.map(r => r.price_usd);
+    const minP = Math.min(...prices);
+    const maxP = Math.max(...prices);
+
+    tbody.innerHTML = shown.map(r => {
+      const [osCls, osLabel] = osBadge(r.os);
+      return `<tr>
+        <td><span class="badge b-${r.provider}">${r.provider.toUpperCase()}</span></td>
+        <td>${r.region}</td>
+        <td class="itype">${r.instance_type}</td>
+        <td><span class="badge ${osCls}">${osLabel}</span></td>
+        <td class="mono ${priceTier(r.price_usd, minP, maxP)}">$${r.price_usd.toFixed(4)}</td>
+      </tr>`;
+    }).join('');
+
+    const total = rows.length;
+    metaEl.textContent = total > MAX_ROWS
+      ? `Showing ${MAX_ROWS.toLocaleString()} of ${total.toLocaleString()} results`
+      : `${total.toLocaleString()} result${total !== 1 ? 's' : ''}`;
+  }
+
+  function updateHeaders() {
+    document.querySelectorAll('th[data-col]').forEach(th => {
+      const col = th.dataset.col;
+      const icon = th.querySelector('.icon');
+      if (col === sortCol) {
+        th.classList.add('active');
+        icon.textContent = sortAsc ? '↑' : '↓';
+      } else {
+        th.classList.remove('active');
+        icon.textContent = '↕';
+      }
+    });
+  }
+
+  /* ── Fetch ── */
+
+  async function fetchPrices() {
+    btnRef.disabled = true;
+    errorsEl.innerHTML = '';
+    metaEl.innerHTML  = '<span class="spinner"></span> Fetching prices…';
+    tbody.innerHTML   = '<tr><td colspan="5"><div class="empty"><strong>Loading…</strong></div></td></tr>';
+
+    const params = new URLSearchParams();
+    if (activeP) params.set('provider', activeP);
+    const reg = inpReg.value.trim();
+    if (reg) params.set('region', reg);
+
+    const url = '/prices' + (params.toString() ? '?' + params : '');
+
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const json = await res.json();
+
+      if (json.errors) {
+        errorsEl.innerHTML = Object.entries(json.errors)
+          .map(([k, v]) => `<div class="error-pill"><strong>${k}</strong>: ${v}</div>`)
+          .join('');
+      }
+
+      allRows = sorted(json.prices || [], sortCol, sortAsc);
+      render();
+    } catch (e) {
+      metaEl.textContent = '';
+      tbody.innerHTML = `<tr><td colspan="5"><div class="empty"><strong>Request failed</strong>${e.message}</div></td></tr>`;
+    } finally {
+      btnRef.disabled = false;
+    }
+  }
+
+  /* ── Events ── */
+
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      activeP = tab.dataset.p;
+      inpReg.value = '';
+      fetchPrices();
+    });
+  });
+
+  document.querySelectorAll('th[data-col]').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      sortAsc = sortCol === col ? !sortAsc : col === 'price_usd';
+      sortCol = col;
+      updateHeaders();
+      allRows = sorted(allRows, sortCol, sortAsc);
+      render();
+    });
+  });
+
+  inpReg.addEventListener('keydown', e => { if (e.key === 'Enter') fetchPrices(); });
+
+  let debounce;
+  inpInst.addEventListener('input', () => {
+    instFilter = inpInst.value;
+    clearTimeout(debounce);
+    debounce = setTimeout(render, 180);
+  });
+
+  btnRef.addEventListener('click', fetchPrices);
+
+  /* ── Init ── */
+  updateHeaders();
+  fetchPrices();
+</script>
+</body>
+</html>

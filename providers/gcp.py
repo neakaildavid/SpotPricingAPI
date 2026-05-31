@@ -110,13 +110,18 @@ def _applicable_regions(service_regions: List[str]) -> List[str]:
 async def _fetch_preemptible_skus(api_key: str) -> List[Dict]:
     global _sku_cache, _sku_cache_at
 
+    if not api_key:
+        raise ValueError(
+            "GCP_API_KEY is not set. "
+            "Get a free key at console.cloud.google.com → APIs & Services → Credentials → Create API Key, "
+            "then enable the Cloud Billing API for your project."
+        )
+
     now = datetime.now(timezone.utc)
     if _sku_cache is not None and _sku_cache_at and (now - _sku_cache_at) < _CACHE_TTL:
         return _sku_cache
 
-    params: Dict = {"currencyCode": "USD", "pageSize": 5000}
-    if api_key:
-        params["key"] = api_key
+    params: Dict = {"currencyCode": "USD", "pageSize": 5000, "key": api_key}
 
     collected: List[Dict] = []
     max_pages = 5
@@ -139,9 +144,7 @@ async def _fetch_preemptible_skus(api_key: str) -> List[Dict]:
             token = data.get("nextPageToken")
             if not token:
                 break
-            params = {"currencyCode": "USD", "pageSize": 5000, "pageToken": token}
-            if api_key:
-                params["key"] = api_key
+            params = {"currencyCode": "USD", "pageSize": 5000, "key": api_key, "pageToken": token}
 
     _sku_cache = collected
     _sku_cache_at = now

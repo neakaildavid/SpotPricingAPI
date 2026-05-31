@@ -4,6 +4,7 @@ from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 load_dotenv()
@@ -39,6 +40,11 @@ class PricesResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     version: str
+
+
+@app.get("/", include_in_schema=False)
+async def frontend():
+    return FileResponse("static/index.html")
 
 
 @app.get("/health", response_model=HealthResponse, tags=["meta"])

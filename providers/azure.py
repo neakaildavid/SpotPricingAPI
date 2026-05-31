@@ -1,12 +1,14 @@
 import asyncio
 from datetime import datetime, timezone
 from typing import List, Dict, Optional
+from urllib.parse import quote as urlquote
 
 import httpx
 
 AZURE_PRICES_URL = "https://prices.azure.com/api/retail/prices"
 AZURE_REGIONS = ["westus", "westus2", "westus3"]
 MAX_PAGES_PER_REGION = 10
+_ODATA_SAFE = "'(),"  # chars the Azure OData parser requires unencoded
 
 
 def _parse_os(product_name: str) -> str:
@@ -26,18 +28,19 @@ def _normalize_timestamp(ts: Optional[str]) -> str:
 
 
 async def _fetch_region(client: httpx.AsyncClient, region: str) -> List[Dict]:
+    # priceType is not a real filterable field — spot VMs are identified by skuName containing 'Spot'.
+    # Single quotes must NOT be percent-encoded (%27); the API rejects that encoding.
     filter_str = (
         f"serviceName eq 'Virtual Machines' "
-        f"and priceType eq 'Spot' "
-        f"and armRegionName eq '{region}'"
+        f"and armRegionName eq '{region}' "
+        f"and contains(skuName, 'Spot')"
     )
-    params: Optional[Dict] = {"$filter": filter_str}
-    url: Optional[str] = AZURE_PRICES_URL
+    url: Optional[str] = f"{AZURE_PRICES_URL}?$filter={urlquote(filter_str, safe=_ODATA_SAFE)}"
     prices: List[Dict] = []
     pages = 0
 
     while url and pages < MAX_PAGES_PER_REGION:
-        resp = await client.get(url, params=params)
+        resp = await client.get(url)
         resp.raise_for_status()
         data = resp.json()
 
@@ -45,8 +48,10 @@ async def _fetch_region(client: httpx.AsyncClient, region: str) -> List[Dict]:
             retail_price = item.get("retailPrice", 0.0)
             if not retail_price or retail_price <= 0:
                 continue
+            # Skip dev/test discounted rows — only keep standard Consumption prices
+            if item.get("type") != "Consumption":
+                continue
 
-            # armSkuName is the canonical instance type (e.g. Standard_D2s_v3)
             instance_type = item.get("armSkuName") or item.get("skuName", "unknown")
 
             prices.append(
@@ -60,9 +65,7 @@ async def _fetch_region(client: httpx.AsyncClient, region: str) -> List[Dict]:
                 }
             )
 
-        # NextPageLink already includes all query params
-        url = data.get("NextPageLink")
-        params = None
+        url = data.get("NextPageLink")  # already fully-formed, use as-is
         pages += 1
 
     return prices
